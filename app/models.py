@@ -15,7 +15,9 @@ class AppointmentUpdate(BaseModel):
     reason: Optional[str] = Field(None, min_length=3, max_length=255)
 class LoginRequest(BaseModel):
     username: str = Field(..., examples=["admin"])
-    password: str = Field(..., examples=["clinic123"])
+    password: str = Field(...)
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
+    username: str
+    role: str
