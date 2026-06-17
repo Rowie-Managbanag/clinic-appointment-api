@@ -15,9 +15,13 @@ security = HTTPBearer()
 appointments = {}
 next_id = 1
 
-VALID_USERNAME = "admin"
-VALID_PASSWORD = "clinic123"
+USERS = {
+    "admin": {"password": "clinic123", "role": "clinic_staff"},
+    "staff": {"password": "staff123", "role": "clinic_assistant"}
+}
+
 VALID_TOKEN = "clinic-secret-token"
+current_user_session = {"username": "", "role": ""}
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
@@ -27,9 +31,9 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
             detail="Invalid or expired token",
         )
     
-    return{
-        "username": VALID_USERNAME,
-        "role": "clinic-staff"
+    return {
+        "username": current_user_session["username"],
+        "role": current_user_session["role"]
     }
 
 @app.get("/")
@@ -43,16 +47,27 @@ def read_root():
 
 @app.post("/login", response_model=TokenResponse)
 def login(login_data: LoginRequest):
-    username_is_valid = compare_digest(login_data.username, VALID_USERNAME)
-    password_is_valid = compare_digest(login_data.password, VALID_PASSWORD)
-    if not username_is_valid or not password_is_valid:
+    if login_data.username not in USERS:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
+    
+    user = USERS[login_data.username]
+    if not compare_digest(login_data.password, user["password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+    
+    current_user_session["username"] = login_data.username
+    current_user_session["role"] = user["role"]
+    
     return {
         "access_token": VALID_TOKEN,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "username": login_data.username,
+        "role": user["role"]
     }
 
 @app.get("/me")
@@ -123,8 +138,13 @@ def update_appointment(appointment_id: int, appointment_update: AppointmentUpdat
     }
 
 @app.delete("/appointments/{appointment_id}")
-def delete_appointment(appointment_id: int, current_user: dict = Depends(verify_token
-)):
+def delete_appointment(appointment_id: int, current_user: dict = Depends(verify_token)):
+    if current_user["role"] != "clinic_staff":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only clinic staff may cancel appointments."
+        )
+    
     if appointment_id not in appointments:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
